@@ -5,6 +5,7 @@ import caffe
 import numpy as np
 import calc_area as ca
 import time
+import os
 from PIL import Image
 from sensor_msgs.msg import Image, CompressedImage
 from cv_bridge import CvBridge, CvBridgeError
@@ -17,25 +18,6 @@ def main():
     except KeyboardInterrupt:
         print "Shutting down"
         cv2.destroyAllWindows()
-
-def calculation_area(img):
-    class_area = [0,0,0,0,0,0,0,0,0]
-    all_class_num = len(class_list)
-    height, width = img.shape
-    all_pixels = height * width
-
-    for y in range(0, height):
-        for x in range(0, width):
-            pixel = img.item(y,x)
-            for i in range(0, all_class_num):
-                if pixel == i:
-                    class_area[i] = class_area[i] + 1
-                else:
-                    pass
-
-    for j in range(0, all_class_num):
-        class_area[j] = float(class_area[j]) / float(all_pixels) * 100
-        #print class_list[j] + ' : ' + str(class_area[j]) + '%'
 
 class get_rgb:
     def __init__(self):
@@ -64,10 +46,10 @@ class get_rgb:
         seg_img = np.array(palette, dtype=np.uint8)[out]
 
         start = time.time()
-        #calculation_area(out)
-        #ca.calc_area(out)
         elapsed_time = time.time() - start
 
+
+        self.file_num = self.file_num + 1
         cv2.imshow("RGB", cv_image)
         cv2.imshow("segmentation_gray", seg_img_gray)
         cv2.imshow("segmentation", seg_img)
@@ -85,9 +67,9 @@ if __name__ == '__main__':
     caffemodel = '/home/nvidia/tools/caffe-enet/models/ENet/caffemodel/enet_fine__fine_izunuma_encoder_crop_dataset6_73677_bn_conv_merged_weights.caffemodel'
     net = caffe.Net(prototxt, caffemodel, caffe.TEST)
     '''
-    class_list = ['bambu_pole', 'iron_pole', 'wood', 'lotus', 'chestnuta', 'sky', 'person', 'boat', 'water_sur']
+
     net = caffe.Net('/home/nvidia/tools/caffe-enet/models/ENet/prototxt/enet_deploy_from_encoder_decoder.prototxt', '/home/nvidia/tools/caffe-enet/models/ENet/caffemodel/enet_fine_izunuma_decoder_3.caffemodel', caffe.TEST)
     #palette = [(90,120,150),(153,153,153),(153,234,170),(0,220,220),(35,142,107),(152,251,152),(180,130,70),(60,20,220),(100,60,0),(250,250,250),(128,128,128)]
     palette = [(90,120,150),(153,153,153),(153,234,170),(35,142,107),(152,251,152),(180,130,70),(60,20,220),(100,60,0),(128,128,128)]
-
+    pub = rospy.Publisher('/realtime_detect', String, queue_size=3)
     main()
