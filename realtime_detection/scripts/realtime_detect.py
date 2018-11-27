@@ -9,8 +9,7 @@ from PIL import Image
 from sensor_msgs.msg import Image, CompressedImage
 from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import String, Float64
-from realtime_detection.msg import Obstacle_Center, Obstacles_Center
-
+from vision_msgs.msg import Detection2D, Detection2DArray
 
 def main():
     Get_rbg = get_rgb()
@@ -24,17 +23,11 @@ class get_rgb:
         self.image_sub = rospy.Subscriber("/kinect2/qhd/image_color_rect", Image, self.callback, queue_size = 1)
 
     def callback(self, data):
-        start = time.time()
+        start_fps = time.time()
         try:
             cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
         except CvBridgeError as e:
             print e
-
-        detect_info = Obstacles_Center()
-        detect_info.header.frame_id = data.header.frame_id
-        detect_info.header.seq = data.header.seq
-        detect_info.header.stamp.secs = data.header.stamp.secs
-        detect_info.header.stamp.nsecs = data.header.stamp.nsecs
 
 
         caffe.set_mode_gpu()
@@ -55,28 +48,27 @@ class get_rgb:
 
         num_of_objects = len(id_and_center)
 
-        '''
+        detect_info = Detection2DArray()
+        detect_info.detections = []
+        detect_info.header = data.header
+
         for id in range(0, num_of_objects):
-            detect_info.obstacles_center[id].Obstacle = 'pole'
-            detect_info.obstacles_center[id].center_y = id_and_center[id][0]
-            detect_info.obstacles_center[id].center_x = id_and_center[id][1]
-            #detect_info.obstacles_center.Obstacle = 'pole'
-            #detect_info.obstacles_center.center_y = id_and_center[id][0]
-            #detect_info.obstacle_center.center_x = id_and_center[id][1]
-        '''
+            obj=Detection2D()
+            obj.bbox.center.y = id_and_center[id][0]
+            obj.bbox.center.x = id_and_center[id][1]
+            detect_info.detections.append(obj)
 
         pub_obstacle_center.publish(detect_info)
 
-        cv2.imshow("RGB", cv_image)
-        cv2.imshow("pole_detect", pole_remove_noise)
-        cv2.imshow("segmentation", seg_img)
+        #cv2.imshow("RGB", cv_image)
+        #cv2.imshow("pole_detect", pole_remove_noise)
+        #cv2.imshow("segmentation", seg_img)
 
-        elapsed_time = time.time() - start
+        elapsed_time = time.time() - start_fps
         fps = float(1.0/elapsed_time)
+        pub_FPS.publish(Float64(fps))
         #print elapsed_time
         #print str(fps) + 'FPS'
-
-        pub_FPS.publish(Float64(fps))
 
         key = cv2.waitKey(delay=1)
 
@@ -133,7 +125,7 @@ if __name__ == '__main__':
     #net = caffe.Net('/home/nvidia/tools/caffe-enet/models/ENet/prototxt/enet_deploy_from_encoder_decoder.prototxt', '/home/nvidia/tools/caffe-enet/models/ENet/caffemodel/enet_fine_izunuma_decoder_3.caffemodel', caffe.TEST)
     palette = [(153,153,153),(153,234,170),(0,220,220),(35,142,107),(152,251,152),(180,130,70),(60,20,220),(100,60,0),(250,250,250),(128,128,128)]
     #palette = [(90,120,150),(153,153,153),(153,234,170),(35,142,107),(152,251,152),(180,130,70),(60,20,220),(100,60,0),(128,128,128)]
-    pub_obstacle_center = rospy.Publisher('/realtime_detect/obstale_detection', Obstacles_Center, queue_size=1)
+    pub_obstacle_center = rospy.Publisher('/realtime_detect/obstale_detection', Detection2DArray, queue_size=1)
     pub_FPS = rospy.Publisher('/realtime_detect/FPS', Float64, queue_size=1)
 
     main()
