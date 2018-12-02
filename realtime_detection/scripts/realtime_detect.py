@@ -13,65 +13,61 @@ from realtime_detection.msg import Obstacle_Center, Obstacles_Center
 
 
 def main():
-    Get_rbg = get_rgb()
-    rospy.init_node('get_rgb', anonymous=True)
+    rospy.init_node('detect_obstacle', anonymous=True)
+    rospy.Subscriber("/kinect2/qhd/image_color_rect", Image, callback, queue_size = 1, buff_size=2**24)
     rospy.spin()
 
-class get_rgb:
-    def __init__(self):
-        self.bridge = CvBridge()
-        #self.image_sub = rospy.Subscriber("/camera/color/image_raw", Image, self.callback, queue_size = 1)
-        self.image_sub = rospy.Subscriber("/kinect2/qhd/image_color_rect", Image, self.callback, queue_size = 1)
+def callback(data):
+    start = time.time()
+    bridge = CvBridge()
+    try:
+        cv_image = bridge.imgmsg_to_cv2(data, "bgr8")
+    except CvBridgeError as e:
+        print e
 
-    def callback(self, data):
-        start = time.time()
-        try:
-            cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
-        except CvBridgeError as e:
-            print e
+    caffe.set_mode_gpu()
+    cv_image = cv2.resize(cv_image, (640, 360))
+    in_ = np.array(cv_image, dtype=np.float32)
+    in_ = in_.transpose((2,0,1))
+    net.blobs['data'].reshape(1, *in_.shape)
+    net.blobs['data'].data[...] = in_
+    net.forward()
+    out = net.blobs['score'].data[0].argmax(axis=0)
+    #out = net.blobs['deconv6_0_0'].data[0].argmax(axis=0)
+    seg_img_gray = np.array(out, dtype=np.uint8)
+    seg_img = np.array(palette, dtype=np.uint8)[out]
 
-        caffe.set_mode_gpu()
-        cv_image = cv2.resize(cv_image, (640, 360))
-        in_ = np.array(cv_image, dtype=np.float32)
-        in_ = in_.transpose((2,0,1))
-        net.blobs['data'].reshape(1, *in_.shape)
-        net.blobs['data'].data[...] = in_
-        net.forward()
-        out = net.blobs['score'].data[0].argmax(axis=0)
-        #out = net.blobs['deconv6_0_0'].data[0].argmax(axis=0)
-        seg_img_gray = np.array(out, dtype=np.uint8)
-        seg_img = np.array(palette, dtype=np.uint8)[out]
+    pole_threshold = Pole_Threshold(seg_img_gray)
+    pole_remove_noise = Open_Close(pole_threshold)
+    id_and_center = Calc_Center(pole_remove_noise)
 
-        pole_threshold = Pole_Threshold(seg_img_gray)
-        pole_remove_noise = Open_Close(pole_threshold)
-        id_and_center = Calc_Center(pole_remove_noise)
+    num_of_objects = len(id_and_center)
 
-        num_of_objects = len(id_and_center)
+    detect_info = Obstacles_Center()
+    detect_info.header = data.header
 
-        detect_info = Obstacles_Center()
-        detect_info.header = data.header
+    for id in range(0, num_of_objects):
+        obj = Obstacle_Center()
+        obj.Class = 'pole'
+        obj.center_y = id_and_center[id][0]
+        obj.center_x = id_and_center[id][1]
+        detect_info.obstacles_center.append(obj)
 
-        for id in range(0, num_of_objects):
-            obj = Obstacle_Center()
-            obj.Class = 'pole'
-            obj.center_y = id_and_center[id][0]
-            obj.center_x = id_and_center[id][1]
-            detect_info.obstacles_center.append(obj)
+    pub_obstacle_center.publish(detect_info)
 
-        pub_obstacle_center.publish(detect_info)
+    cv2.imshow("RGB", cv_image)
+    #cv2.imshow("pole_detect", pole_remove_noise)
+    #cv2.imshow("segmentation", seg_img)
 
-        cv2.imshow("RGB", cv_image)
-        cv2.imshow("pole_detect", pole_remove_noise)
-        cv2.imshow("segmentation", seg_img)
+    elapsed_time = time.time() - start
+    fps = float(1.0/elapsed_time)
+    #print elapsed_time
+    #print str(fps) + 'FPS'
+    pub_FPS.publish(Float64(fps))
 
-        elapsed_time = time.time() - start
-        fps = float(1.0/elapsed_time)
-        #print elapsed_time
-        #print str(fps) + 'FPS'
+    #rospy.loginfo(rospy.get_caller_id() + "\ntime:\nseq: [{}]\nsecs: [{}]\nnsecs: [{}]".format(data.header.seq, data.header.stamp.secs, data.header.stamp.nsecs))
 
-        pub_FPS.publish(Float64(fps))
-
-        key = cv2.waitKey(delay=1)
+    key = cv2.waitKey(delay=1)
 
 def Pole_Threshold(img):
     recolor_img = img.copy()
@@ -126,7 +122,7 @@ if __name__ == '__main__':
     #net = caffe.Net('/home/nvidia/tools/caffe-enet/models/ENet/prototxt/enet_deploy_from_encoder_decoder.prototxt', '/home/nvidia/tools/caffe-enet/models/ENet/caffemodel/enet_fine_izunuma_decoder_3.caffemodel', caffe.TEST)
     palette = [(153,153,153),(153,234,170),(0,220,220),(35,142,107),(152,251,152),(180,130,70),(60,20,220),(100,60,0),(250,250,250),(128,128,128)]
     #palette = [(90,120,150),(153,153,153),(153,234,170),(35,142,107),(152,251,152),(180,130,70),(60,20,220),(100,60,0),(128,128,128)]
-    pub_obstacle_center = rospy.Publisher('/realtime_detect/obstale_detection', Obstacles_Center, queue_size=1)
-    pub_FPS = rospy.Publisher('/realtime_detect/FPS', Float64, queue_size=1)
+    pub_obstacle_center = rospy.Publisher('/realtime_detect/obstale_detection', Obstacles_Center, queue_size = 1)
+    pub_FPS = rospy.Publisher('/realtime_detect/FPS', Float64, queue_size = 1)
 
     main()
