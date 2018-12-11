@@ -1,0 +1,2 @@
+Header header
+Obstacle_Global_Position[] obstacles_global_position

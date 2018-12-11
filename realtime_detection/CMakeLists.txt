@@ -31,6 +31,8 @@ add_message_files(
    FILES
    Obstacle_Center.msg
    Obstacles_Center.msg
+   Obstacle_Global_Position.msg
+   Obstacles_Global_Position.msg
 )
 
 ## Generate added messages and services with any dependencies listed here
