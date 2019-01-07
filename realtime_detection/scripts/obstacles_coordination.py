@@ -97,9 +97,12 @@ class Obstacle_Coordination():
                 obj.UTM_y = XYZ3D_after_rotation[2] + camera_UTM_xy[1]
                 obj.Height = -1 * XYZ3D_after_rotation[1]
                 obj.Class = 'pole'
+
                 global_position_info.obstacles_global_position.append(obj)
+                global_position_info.judge = 1
 
             else:
+                global_position_info.judge = 0
                 pass
 
         self.pub_obstacles_global_position.publish(global_position_info)

@@ -72,9 +72,12 @@ class Realtime_Detect():
                 obj.center_x = id_and_center[id][1]
                 detect_info.obstacles_center.append(obj)
 
+            overlray = cv2.addWeighted(cv_image, 1.0, seg_img, 0.7, 0)
+
             #cv2.imshow("RGB", cv_image)
             #cv2.imshow("pole_detect", pole_remove_noise)
             #cv2.imshow("segmentation", seg_img)
+            cv2.imshow("overlray", overlray)
 
             elapsed_time = time.time() - start
             fps = float(1.0/elapsed_time)
