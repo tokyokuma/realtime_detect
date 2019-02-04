@@ -7,6 +7,7 @@ import math
 import numpy as np
 import matplotlib
 import time
+import csv
 import matplotlib.pyplot as plt
 from std_msgs.msg import String, Float64
 from realtime_detection.msg import Obstacle_Global_Position, Obstacles_Global_Position
@@ -34,18 +35,66 @@ class Plot_Obstacle:
 
         ax.scatter(pole_x, pole_y)
 
-        #ax.set_xlim(507975,507995)
-        #ax.set_ylim(4285765,4285785)
+        ax.set_xlim(507984,507988)
+        ax.set_ylim(4285781,4285786)
+
+        obstacle = [0, 0]
 
         while not rospy.is_shutdown():
             obstacle_position = self.obstacle_position
             num_of_objects = len(obstacle_position.obstacles_global_position)
+
             if obstacle_position.judge:
+                '''
                 for i in range(0, num_of_objects):
                     x = obstacle_position.obstacles_global_position[i].UTM_x
                     y = obstacle_position.obstacles_global_position[i].UTM_y
-                    ax.scatter(x, y)
+                    height = obstacle_position.obstacles_global_position[i].Height
+                    Pixhawk_UTM_x = obstacle_position.Pixhawk_UTM_x
+                    Pixhawk_UTM_y = obstacle_position.Pixhawk_UTM_y
+                    position = [x, y,height,Pixhawk_UTM_x, Pixhawk_UTM_y]
+
+
+                    if height >= 0.5:
+                        f = open(position_csv, 'a')
+                        writer = csv.writer(f)
+                        writer.writerow(position)
+                        f.close()
+
+                        ax.scatter(x, y)
+
+                    else:
+                        pass
+
                     plt.pause(.01)
+                '''
+                x = obstacle_position.obstacles_global_position[0].UTM_x
+                y = obstacle_position.obstacles_global_position[0].UTM_y
+                height = obstacle_position.obstacles_global_position[0].Height
+                Pixhawk_UTM_x = obstacle_position.Pixhawk_UTM_x
+                Pixhawk_UTM_y = obstacle_position.Pixhawk_UTM_y
+                position = [x, y,height,Pixhawk_UTM_x, Pixhawk_UTM_y]
+
+                diff = ((obstacle[0] - x)**2 + (obstacle[1] - y)**2)**0.5
+                obstacle = [x, y]
+
+                print '-------------------------------'
+                print 'diff : ' + str(diff)
+                print 'height : ' + str(height)
+
+
+                if 0.3 <= height < 1.0 and 0 <diff <= 1.0:
+                    f = open(position_csv, 'a')
+                    writer = csv.writer(f)
+                    writer.writerow(position)
+                    f.close()
+
+                    ax.scatter(x, y)
+
+                else:
+                    pass
+
+                plt.pause(.01)
 
             else:
                 pass
@@ -53,4 +102,11 @@ class Plot_Obstacle:
 
 
 if __name__ == '__main__':
+    position_csv = 'position.csv'
+    f = open(position_csv, 'w')
+    writer = csv.writer(f)
+    header = ['x', 'y', 'height', 'Pixhawk_UTM_x', 'Pixhawk_UTM_y']
+    writer.writerow(header)
+    f.close()
+
     main()

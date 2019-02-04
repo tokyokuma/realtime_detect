@@ -69,7 +69,7 @@ class Obstacle_Coordination():
             Pixhawk_Lat = self.Pixhawk_Lat
             quaternion = self.quaternion
 
-            cv_image_depth_resize = cv2.resize(cv_image_depth, (640,360), interpolation=cv2.INTER_NEAREST)
+            cv_image_depth_resize = cv2.resize(cv_image_depth, (768,432), interpolation=cv2.INTER_NEAREST)
             global_position_info = Obstacles_Global_Position()
             global_position_info.header = center_header
 
@@ -86,26 +86,35 @@ class Obstacle_Coordination():
         camera_UTM_xy = self.Calc_camera_UTM(yaw_rad, Pixhawk_Lon, Pixhawk_Lat)
         obstacle_UTM_xyz = np.empty(3)
         num_of_object = len(center)
-        obj = Obstacle_Global_Position()
 
         for obstacle_id in range(0, num_of_object):
             depth = self.Get_depth(obstacle_id, center, cv_image_depth_resize)
             if depth != None:
+                start = time.time()
+                obj = Obstacle_Global_Position()
                 obstacle_raw_XYZ3D = self.Convert_camera_to_world(obstacle_id, center, depth)
                 XYZ3D_after_rotation = self.Imu_Camera_rotation(obstacle_raw_XYZ3D, roll_rad, pitch_rad)
                 obj.UTM_x = XYZ3D_after_rotation[0] + camera_UTM_xy[0]
-                obj.UTM_y = XYZ3D_after_rotation[2] + camera_UTM_xy[1]
-                obj.Height = -1 * XYZ3D_after_rotation[1]
+                #obj.UTM_y = XYZ3D_after_rotation[2] + camera_UTM_xy[1]
+                obj.UTM_y = XYZ3D_after_rotation[2] + camera_UTM_xy[1] + 1.0
+
+                obj.Height = 1.0 + XYZ3D_after_rotation[1]
                 obj.Class = 'pole'
 
                 global_position_info.obstacles_global_position.append(obj)
                 global_position_info.judge = 1
+                Pixhawk_UTM_x, Pixhawk_UTM_y = pyproj.transform(WGS84, UTM54, Pixhawk_Lon, Pixhawk_Lat)
+                global_position_info.Pixhawk_UTM_x = Pixhawk_UTM_x
+                global_position_info.Pixhawk_UTM_y = Pixhawk_UTM_y
 
+                elapsed = time.time() - start
+                print elapsed
             else:
                 global_position_info.judge = 0
                 pass
 
         self.pub_obstacles_global_position.publish(global_position_info)
+
 
     def Calc_camera_UTM(self, yaw_rad, Pixhawk_Lon, Pixhawk_Lat):
         Pixhawk_UTM_x, Pixhawk_UTM_y = pyproj.transform(WGS84, UTM54, Pixhawk_Lon, Pixhawk_Lat)
@@ -121,20 +130,28 @@ class Obstacle_Coordination():
 
 
     def Get_depth(self, obstacle_id, center, cv_image_depth_resize):
-        #get depth kernel 9*9
-        kernel_size = 9
-        kernel_param = (kernel_size - 1) / 2
-
         integration_depth = 0
         average_depth = None
 
         image_yx_min = [0, 0]
-        image_yx_max = [360, 640]
-
-
+        image_yx_max = [432, 768]
         count = 0
-        yx_min = [center[obstacle_id].center_y - kernel_param, center[obstacle_id].center_x - kernel_param]
-        yx_max = [center[obstacle_id].center_y + kernel_param + 1, center[obstacle_id].center_x + kernel_param + 1]
+
+        #get depth kernel 9*9
+
+        #kernel_size = 9
+        #kernel_param = (kernel_size - 1) / 2
+
+        #yx_min = [center[obstacle_id].center_y - kernel_param, center[obstacle_id].center_x - kernel_param]
+        #yx_max = [center[obstacle_id].center_y + kernel_param + 1, center[obstacle_id].center_x + kernel_param + 1]
+
+
+        kernel_size_v = 25
+        kernel_size_u = 5
+
+        yx_min = [center[obstacle_id].center_y - kernel_size_v, center[obstacle_id].center_x - kernel_size_u]
+        yx_max = [center[obstacle_id].center_y + kernel_size_v, center[obstacle_id].center_x + kernel_size_u]
+
 
         for j in range(0,2):
             if yx_min[j] >= image_yx_min[j]:

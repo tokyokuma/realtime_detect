@@ -8,6 +8,7 @@ import torch
 import numpy as np
 import time
 import SegmentationModel as net
+import fast_ESPNetv2 as fast
 from torch import nn
 from PIL import Image
 from argparse import ArgumentParser
@@ -53,11 +54,14 @@ class Realtime_Detect():
         if not os.path.isfile(args.pretrained):
             print('Pre-trained model file does not exist. Please check ./pretrained_models folder')
             exit(-1)
+
         modelA = nn.DataParallel(modelA)
         modelA.load_state_dict(torch.load(args.pretrained))
-        if args.gpu:
-            modelA = modelA.cuda()
-
+        modelA = modelA.cuda()
+        fmt = cv2.VideoWriter_fourcc(*'XVID')
+        fps = 6.0
+        size = (768, 432*2)
+        writer = cv2.VideoWriter('/media/nvidia/outtest.avi', fmt, fps, size)
         # set to evaluation mode
         modelA.eval()
 
@@ -71,9 +75,17 @@ class Realtime_Detect():
 
             cv_image = self.cv_image
             data_header = self.data_header
-
+            #cv_image = Sharp(cv_image)
+            #cv_image = High_contrast(50, 200, cv_image)
             img = cv2.resize(cv_image, (args.width, args.height))
-            gray, segmentation, overlay = evaluateModel(args, modelA, img)
+            if args.colored:
+                if args.overlay:
+                    gray, segmentation, overlay = evaluateModel(args, modelA, img)
+                else:
+                    gray, segmentation = evaluateModel(args, modelA, img)
+            else:
+                gray = evaluateModel(args, modelA, img)
+
             gray_orig = np.copy(gray)
             pole_threshold = Pole_Threshold(gray)
             pole_remove_noise = Open_Close(pole_threshold)
@@ -91,6 +103,11 @@ class Realtime_Detect():
                 obj.center_x = id_and_center[id][1]
                 detect_info.obstacles_center.append(obj)
 
+            im_h = cv2.vconcat([img, segmentation])
+            #print (im_h.shape)
+            writer.write(im_h)
+            #cv2.imshow("RGB_seg", im_h)
+
             #cv2.imshow("RGB", img)
             #cv2.imshow("gray", gray_orig)
             #cv2.imshow("pole_detect", pole_remove_noise)
@@ -106,28 +123,29 @@ class Realtime_Detect():
 
             key = cv2.waitKey(delay=1)
 
+        writer.release()
+
 def evaluateModel(args, model, img):
     # gloabl mean and std values
-    mean = [131.84157, 145.38597, 135.16437]
-    std =  [76.013596, 67.85283,  70.89791 ]
+    mean = np.array([131.84157, 145.38597, 135.16437])
+    std = np.array([76.013596, 67.85283,  70.89791 ])
 
     model.eval()
     img_orig = np.copy(img)
 
+    #0.015sec
     img = img.astype(np.float32)
-    for j in range(3):
-        img[:, :, j] -= mean[j]
-    for j in range(3):
-        img[:, :, j] /= std[j]
+    fast.mean_std(img, mean, std)
 
+    #0.01
     img /= 255
     img = img.transpose((2, 0, 1))
     img_tensor = torch.from_numpy(img)
     img_tensor = torch.unsqueeze(img_tensor, 0)  # add a batch dimension
-    if args.gpu:
-        img_tensor = img_tensor.cuda()
-    img_out = model(img_tensor)
+    img_tensor = img_tensor.cuda()
 
+    #0.088
+    img_out = model(img_tensor)
     classMap_numpy = img_out[0].max(0)[1].byte().cpu().data.numpy()
     classMap_numpy = classMap_numpy.astype(np.uint8)
 
@@ -139,8 +157,9 @@ def evaluateModel(args, model, img):
         if args.overlay:
             overlayed = cv2.addWeighted(img_orig, 0.5, classMap_numpy_color, 0.5, 0)
 
-        return classMap_numpy, classMap_numpy_color, overlayed
-
+            return classMap_numpy, classMap_numpy_color, overlayed
+        else:
+            return classMap_numpy, classMap_numpy_color
     else:
         return classMap_numpy
 
@@ -158,7 +177,7 @@ def Pole_Threshold(img):
 def Open_Close(img):
     #0.0040sec
     img_tmp = img
-    element8 = np.ones((10, 10), np.uint8)
+    element8 = np.ones((1, 1), np.uint8)
     iteration = 1
     while iteration <= 1:
         img_tmp = cv2.morphologyEx(img_tmp, cv2.MORPH_OPEN, element8)
@@ -183,17 +202,47 @@ def Calc_Center(pole_remove_noise):
 
     return obstacle_coordination
 
+def Sharp(img):
+    #sharpened
+    k = 1.0
+    op = np.array([[-k, k, -k],
+                   [-k, 1 + 6 * k, -k],
+                   [-k, -k, -k]])
+
+    img_tmp = cv2.filter2D(img, -1 , op)
+    sharp_img = cv2.convertScaleAbs(img_tmp)
+
+    return sharp_img
+
+def High_contrast(min, max, img):
+    #re_contrast table
+    min_table = min
+    max_table = max
+    diff_table = max_table - min_table
+
+    LUT_HC = np.arange(256, dtype = 'uint8' )
+    LUT_LC = np.arange(256, dtype = 'uint8' )
+
+    # create high-contrast LUT
+    for a in range(0, min_table):
+        LUT_HC[a] = 0
+    for a in range(min_table, max_table):
+        LUT_HC[a] = 255 * (a - min_table) / diff_table
+    for a in range(max_table, 255):
+        LUT_HC[a] = 255
+
+    return cv2.LUT(img, LUT_HC)
+
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--model', default="ESPNetv2", help='Model name')
     parser.add_argument('--width', type=int, default=768, help='Width of RGB image')
     parser.add_argument('--height', type=int, default=432, help='Height of RGB image')
-    parser.add_argument('--gpu', default=True, type=bool, help='Run on CPU or GPU. If TRUE, then GPU.')
     parser.add_argument('--pretrained', default='/home/nvidia/tools/ESPNetv2/models/izunuma_dataset9_0.5/model_best.pth', help='Pretrained weights directory.')
     parser.add_argument('--s', default=0.5, type=float, help='scale')
-    parser.add_argument('--colored', default=True, type=bool, help='If you want to visualize the '
+    parser.add_argument('--colored', default=False, type=bool, help='If you want to visualize the '
                                                                    'segmentation masks in color')
-    parser.add_argument('--overlay', default=True, type=bool, help='If you want to visualize the '
+    parser.add_argument('--overlay', default=False, type=bool, help='If you want to visualize the '
                                                                    'segmentation masks overlayed on top of RGB image')
     parser.add_argument('--classes', default=11, type=int, help='Number of classes in the dataset. 20 for Cityscapes')
     args = parser.parse_args()

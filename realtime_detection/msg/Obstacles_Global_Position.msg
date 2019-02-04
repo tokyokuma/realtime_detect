@@ -1,3 +1,5 @@
 Header header
 bool judge
+float64 Pixhawk_UTM_x
+float64 Pixhawk_UTM_y
 Obstacle_Global_Position[] obstacles_global_position
